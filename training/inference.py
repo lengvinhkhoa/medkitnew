@@ -1,3 +1,4 @@
+import os
 import sys
 import torch
 from pathlib import Path
@@ -6,6 +7,13 @@ from peft import PeftModel
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
+
+# Cấu hình Cache HuggingFace lưu trực tiếp vào thư mục dự án trên ổ F: (tránh ổ C: bị hết đĩa)
+CACHE_DIR = ROOT_DIR / "models" / "cache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+os.environ["HF_HOME"] = str(CACHE_DIR)
+os.environ["TRANSFORMERS_CACHE"] = str(CACHE_DIR)
+os.environ["HF_HUB_CACHE"] = str(CACHE_DIR)
 
 from config.settings import DEFAULT_SYSTEM_PROMPT
 
@@ -20,6 +28,7 @@ def load_medkit_gemma(
     print("=" * 60)
     print("🤖 NẠP MODEL TRỢ LÝ Y TẾ AI NGUYÊN BẢN GEMMA FINE-TUNED MEDKIT")
     print(f"📌 Base Model: {base_model_name}")
+    print(f"📌 Cache Directory (Ổ F): {CACHE_DIR}")
     print(f"📌 LoRA Adapter: {adapter_path}")
     print("=" * 60)
 
@@ -32,11 +41,16 @@ def load_medkit_gemma(
         bnb_4bit_use_double_quant=True
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(base_model_name, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(
+        base_model_name,
+        cache_dir=str(CACHE_DIR),
+        trust_remote_code=True
+    )
     base_model = AutoModelForCausalLM.from_pretrained(
         base_model_name,
         quantization_config=bnb_config,
         device_map="auto" if is_cuda_ok else "cpu",
+        cache_dir=str(CACHE_DIR),
         trust_remote_code=True
     )
 
