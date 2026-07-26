@@ -19,8 +19,6 @@ def push_to_huggingface(
     """
     print("=" * 60)
     print("🚀 ĐẨY MODEL FINE-TUNED MEDKIT LÊN HUGGING FACE HUB")
-    print(f"📌 Target Repository: https://huggingface.co/{repo_id}")
-    print(f"📌 Local Adapter Path: {adapter_path}")
     print("=" * 60)
 
     if not adapter_path.exists():
@@ -30,14 +28,25 @@ def push_to_huggingface(
     try:
         from huggingface_hub import HfApi, create_repo
         
-        print("\n1. Khởi tạo / Kiểm tra Repository trên Hugging Face...")
         api = HfApi(token=token)
+        user_info = api.whoami(token=token)
+        hf_username = user_info.get("name")
+        print(f"👤 Đã xác thực thành công tài khoản Hugging Face: {hf_username}")
+
+        # Tự động sửa namespace repo theo đúng Username tài khoản Token
+        if "/" not in repo_id:
+            repo_id = f"{hf_username}/{repo_id}"
+        else:
+            repo_name_only = repo_id.split("/", 1)[1]
+            repo_id = f"{hf_username}/{repo_name_only}"
+
+        print(f"📌 Target Repository: https://huggingface.co/{repo_id}")
+        print(f"📌 Local Adapter Path: {adapter_path}")
+
+        print("\n1. Khởi tạo / Kiểm tra Repository trên Hugging Face...")
         create_repo(repo_id=repo_id, token=token, exist_ok=True, repo_type="model")
 
-        print("\n2. Đang tải Adapter và Tokenizer...")
-        tokenizer = AutoTokenizer.from_pretrained(adapter_path)
-        
-        print("\n3. Đang Upload toàn bộ trọng số LoRA lên Hugging Face Hub...")
+        print("\n2. Đang Upload toàn bộ trọng số LoRA Adapter lên Hugging Face Hub...")
         api.upload_folder(
             folder_path=str(adapter_path),
             repo_id=repo_id,
@@ -51,10 +60,11 @@ def push_to_huggingface(
 
     except Exception as e:
         print(f"❌ Lỗi trong quá trình upload: {e}")
+        print("💡 Lưu ý: Hãy đảm bảo Token được tạo ở dạng 'Write' (Quyền ghi) tại https://huggingface.co/settings/tokens")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Upload LoRA Adapter lên Hugging Face Hub")
-    parser.add_argument("--repo_id", type=str, required=True, help="Tên Repo trên HF (Ví dụ: lengvinhkhoa/gemma-4-medkit-vietnamese)")
+    parser.add_argument("--repo_id", type=str, default="gemma-4-medkit-vietnamese", help="Tên Repo trên HF")
     parser.add_argument("--token", type=str, required=True, help="Hugging Face Write Token (hf_xxx...)")
 
     args = parser.parse_args()
