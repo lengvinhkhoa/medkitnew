@@ -10,9 +10,10 @@ sys.path.append(str(ROOT_DIR))
 from config.settings import DEFAULT_SYSTEM_PROMPT
 
 MODEL_ADAPTER_PATH = ROOT_DIR / "models" / "gemma_medkit_qlora"
+DEFAULT_MODEL_NAME = "unsloth/gemma-2-2b-it-bnb-4bit"
 
 def load_medkit_gemma(
-    base_model_name: str = "google/gemma-2-2b-it",
+    base_model_name: str = DEFAULT_MODEL_NAME,
     adapter_path: Path = MODEL_ADAPTER_PATH
 ):
     """Tải Base Model Gemma + LoRA Adapter đã huấn luyện trên RTX 3060."""
@@ -22,10 +23,12 @@ def load_medkit_gemma(
     print(f"📌 LoRA Adapter: {adapter_path}")
     print("=" * 60)
 
+    is_cuda_ok = torch.cuda.is_available()
+
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+        bnb_4bit_compute_dtype=torch.bfloat16 if is_cuda_ok and torch.cuda.is_bf16_supported() else torch.float16,
         bnb_4bit_use_double_quant=True
     )
 
@@ -33,7 +36,7 @@ def load_medkit_gemma(
     base_model = AutoModelForCausalLM.from_pretrained(
         base_model_name,
         quantization_config=bnb_config,
-        device_map="auto",
+        device_map="auto" if is_cuda_ok else "cpu",
         trust_remote_code=True
     )
 
@@ -46,7 +49,7 @@ def load_medkit_gemma(
 
     return model, tokenizer
 
-def chat_interactive(base_model_name: str = "google/gemma-2-2b-it"):
+def chat_interactive(base_model_name: str = DEFAULT_MODEL_NAME):
     """Giao diện Chat thử nghiệm trực tiếp trên terminal với Streamer."""
     model, tokenizer = load_medkit_gemma(base_model_name)
     streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
@@ -88,8 +91,8 @@ def chat_interactive(base_model_name: str = "google/gemma-2-2b-it"):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Chạy thử nghiệm Model Gemma 2 đã Fine-tuned")
-    parser.add_argument("--base_model", type=str, default="google/gemma-2-2b-it", help="Hugging Face Base Model ID")
+    parser = argparse.ArgumentParser(description="Chạy thử nghiệm Model Gemma đã Fine-tuned")
+    parser.add_argument("--base_model", type=str, default=DEFAULT_MODEL_NAME, help="Hugging Face Base Model ID")
 
     args = parser.parse_args()
     chat_interactive(args.base_model)

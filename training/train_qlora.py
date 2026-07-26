@@ -15,8 +15,11 @@ TRAIN_FILE = ROOT_DIR / "data" / "processed" / "train.jsonl"
 EVAL_FILE = ROOT_DIR / "data" / "processed" / "eval.jsonl"
 OUTPUT_DIR = ROOT_DIR / "models" / "gemma_medkit_qlora"
 
+# Default Model ID (Dùng unsloth/gemma-2-2b-it-bnb-4bit để tránh lỗi 401 GatedRepo)
+DEFAULT_MODEL_NAME = "unsloth/gemma-2-2b-it-bnb-4bit"
+
 def run_training(
-    model_name: str = "google/gemma-2-2b-it",
+    model_name: str = DEFAULT_MODEL_NAME,
     output_dir: Path = OUTPUT_DIR,
     num_epochs: int = 3,
     batch_size: int = 2,
@@ -26,13 +29,18 @@ def run_training(
     use_unsloth: bool = False
 ):
     """
-    Huấn luyện Gemma 2 (2B / 9B) bằng kỹ thuật QLoRA 4-bit tối ưu riêng cho GPU RTX 3060 12GB VRAM.
+    Huấn luyện Gemma bằng kỹ thuật QLoRA 4-bit tối ưu riêng cho GPU RTX 3060 12GB VRAM.
     """
     print("=" * 60)
     print("🚀 KHỞI CHẠY HUẤN LUYỆN GEMMA VỚI TỆP DATASET NGUYÊN BẢN 10.000 MẪU Y TẾ")
-    print(f"📌 GPU Target: RTX 3060 12GB VRAM | CUDA Available: {torch.cuda.is_available()}")
-    if torch.cuda.is_available():
+    is_cuda_ok = torch.cuda.is_available()
+    print(f"📌 GPU Target: RTX 3060 12GB VRAM | CUDA Available: {is_cuda_ok}")
+    if is_cuda_ok:
         print(f"📌 Card GPU: {torch.cuda.get_device_name(0)} ({torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB VRAM)")
+    else:
+        print("⚠️ CẢNH BÁO: PyTorch hiện tại KHÔNG nhận diện được GPU CUDA (CUDA Available = False)!")
+        print("💡 Hãy cài lại PyTorch CUDA bằng lệnh: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121")
+    
     print(f"📌 Base Model: {model_name}")
     print(f"📌 Target Output: {output_dir}")
     print("=" * 60)
@@ -45,7 +53,7 @@ def run_training(
     print(f"  - Tập Eval: {len(eval_dataset)} mẫu")
 
     # 2. Khởi tạo Unsloth hoặc HuggingFace Standard
-    if use_unsloth:
+    if use_unsloth or "unsloth" in model_name.lower():
         try:
             from unsloth import FastLanguageModel
             print("\n⚡ Sử dụng Unsloth (Tối ưu tốc độ x2, tiết kiệm VRAM 50%)...")
@@ -60,13 +68,14 @@ def run_training(
                 r=16,
                 target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
                 lora_alpha=32,
-                lora_dropout=0,  # Unsloth hỗ trợ 0 dropout tối ưu hơn
+                lora_dropout=0,
                 bias="none",
                 use_gradient_checkpointing="unsloth",
                 random_state=42,
             )
+            use_unsloth = True
         except ImportError:
-            print("⚠️ Chưa cài Unsloth. Chuyển sang chuẩn Hugging Face Transformers + PEFT + BitsAndBytes...")
+            print("⚠️ Chưa cài thư viện unsloth. Đang dùng Transformers + BitsAndBytes tiêu chuẩn...")
             use_unsloth = False
 
     if not use_unsloth:
@@ -77,7 +86,7 @@ def run_training(
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+            bnb_4bit_compute_dtype=torch.bfloat16 if is_cuda_ok and torch.cuda.is_bf16_supported() else torch.float16,
             bnb_4bit_use_double_quant=True
         )
 
@@ -88,7 +97,7 @@ def run_training(
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             quantization_config=bnb_config,
-            device_map="auto",
+            device_map="auto" if is_cuda_ok else "cpu",
             trust_remote_code=True
         )
         model = prepare_model_for_kbit_training(model)
@@ -130,9 +139,9 @@ def run_training(
         save_steps=100,
         save_total_limit=2,
         num_train_epochs=num_epochs,
-        optim="paged_adamw_8bit",  # Tiết kiệm tối đa VRAM
-        fp16=not torch.cuda.is_bf16_supported(),
-        bf16=torch.cuda.is_bf16_supported(),
+        optim="paged_adamw_8bit" if is_cuda_ok else "adamw_torch",
+        fp16=is_cuda_ok and not torch.cuda.is_bf16_supported(),
+        bf16=is_cuda_ok and torch.cuda.is_bf16_supported(),
         report_to="none"
     )
 
@@ -154,8 +163,8 @@ def run_training(
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Fine-tune Gemma 2 trên RTX 3060 12GB VRAM")
-    parser.add_argument("--model", type=str, default="google/gemma-2-2b-it", help="Hugging Face Model ID")
+    parser = argparse.ArgumentParser(description="Fine-tune Gemma trên RTX 3060 12GB VRAM")
+    parser.add_argument("--model", type=str, default=DEFAULT_MODEL_NAME, help="Hugging Face Model ID")
     parser.add_argument("--epochs", type=int, default=3, help="Số lượng Epochs")
     parser.add_argument("--batch_size", type=int, default=2, help="Batch size trên mỗi GPU")
     parser.add_argument("--grad_accum", type=int, default=4, help="Gradient accumulation steps")
