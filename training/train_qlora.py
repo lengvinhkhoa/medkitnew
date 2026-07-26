@@ -85,7 +85,7 @@ def run_training(
             is_unsloth_success = True
             print("✅ Đã khởi tạo Unsloth FastLanguageModel thành công!")
         except Exception as e:
-            print(f"⚠️ Dùng Transformers + BitsAndBytes tiêu chuẩn ({e})...")
+            print(f"⚠️ Chưa khởi tạo được Unsloth Natively ({e}).")
             is_unsloth_success = False
 
     if not is_unsloth_success:
@@ -112,16 +112,6 @@ def run_training(
             trust_remote_code=True
         )
 
-        # Mở bọc tự động Gemma4ClippableLinear -> Linear4bit để tương thích PEFT
-        for name, module in list(model.named_modules()):
-            if hasattr(module, "linear") and "ClippableLinear" in module.__class__.__name__:
-                if "." in name:
-                    parent_name, attr_name = name.rsplit(".", 1)
-                    parent = dict(model.named_modules())[parent_name]
-                    setattr(parent, attr_name, module.linear)
-                else:
-                    setattr(model, name, module.linear)
-
         model = prepare_model_for_kbit_training(model)
 
         print("\n🛠️ 3. Thiết lập Cấu hình PEFT / LoRA...")
@@ -133,8 +123,17 @@ def run_training(
             bias="none",
             task_type="CAUSAL_LM"
         )
-        model = get_peft_model(model, peft_config)
-        model.print_trainable_parameters()
+        try:
+            model = get_peft_model(model, peft_config)
+            model.print_trainable_parameters()
+        except Exception as peft_err:
+            print(f"\n❌ Lỗi cấu hình PEFT với Model custom của Unsloth: {peft_err}")
+            print("💡 ĐỂ SỬA LỖI NÀY, BẠN CÓ 2 CÁCH:")
+            print("   👉 Cách 1 (Khuyên dùng): Cài 'triton-windows' để kích hoạt Unsloth Natively:")
+            print("        pip install triton-windows")
+            print("   👉 Cách 2: Chuyển sang Gemma 2B 4-bit tiêu chuẩn tương thích 100% PEFT:")
+            print("        python training/train_qlora.py --model unsloth/gemma-2-2b-it-bnb-4bit\n")
+            return
 
     # 3. Format dữ liệu theo Chat Template
     print("\n📝 4. Đang Format dữ liệu thành Prompt Gemma...")
