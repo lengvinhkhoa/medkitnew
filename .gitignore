@@ -39,7 +39,10 @@ ENV/
 # Models & Checkpoints
 models/*
 !models/.gitkeep
+llama.cpp/
+*.gguf
 
 # Data & Logs
 *.log
 .pytest_cache/
+
