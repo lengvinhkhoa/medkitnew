@@ -8,11 +8,12 @@ from typing import Optional
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
 
-# Cấu hình Cache HuggingFace lưu trực tiếp vào thư mục dự án (tránh làm đầy ổ C:)
+# Cấu hình Cache HuggingFace lưu trực tiếp vào thư mục dự án trên ổ F: (tránh làm đầy ổ C:)
 CACHE_DIR = ROOT_DIR / "models" / "cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 os.environ["HF_HOME"] = str(CACHE_DIR)
 os.environ["TRANSFORMERS_CACHE"] = str(CACHE_DIR)
+os.environ["HF_HUB_CACHE"] = str(CACHE_DIR)
 
 from training.dataset_loader import load_jsonl_dataset, format_messages_for_gemma
 
@@ -21,8 +22,8 @@ TRAIN_FILE = ROOT_DIR / "data" / "processed" / "train.jsonl"
 EVAL_FILE = ROOT_DIR / "data" / "processed" / "eval.jsonl"
 OUTPUT_DIR = ROOT_DIR / "models" / "gemma_medkit_qlora"
 
-# Model 2B Siêu nhẹ (~1.5GB) tối ưu cho RTX 3060 và không tốn đĩa
-DEFAULT_MODEL_NAME = "unsloth/gemma-2-2b-it-bnb-4bit"
+# Model chỉ định từ người dùng: unsloth/gemma-4-E2B-it-unsloth-bnb-4bit
+DEFAULT_MODEL_NAME = "unsloth/gemma-4-E2B-it-unsloth-bnb-4bit"
 
 def run_training(
     model_name: str = DEFAULT_MODEL_NAME,
@@ -35,7 +36,7 @@ def run_training(
     use_unsloth: bool = False
 ):
     """
-    Huấn luyện Gemma 2B bằng kỹ thuật QLoRA 4-bit tối ưu riêng cho GPU RTX 3060 12GB VRAM.
+    Huấn luyện Gemma bằng kỹ thuật QLoRA 4-bit tối ưu riêng cho GPU RTX 3060 12GB VRAM.
     """
     print("=" * 60)
     print("🚀 KHỞI CHẠY HUẤN LUYỆN GEMMA VỚI TỆP DATASET NGUYÊN BẢN 10.000 MẪU Y TẾ")
@@ -46,8 +47,8 @@ def run_training(
     else:
         print("⚠️ CẢNH BÁO: PyTorch hiện tại KHÔNG nhận diện được GPU CUDA!")
     
-    print(f"📌 Base Model: {model_name}")
-    print(f"📌 Cache Directory: {CACHE_DIR}")
+    print(f"📌 Base Model Target: {model_name}")
+    print(f"📌 Cache Directory (Ổ F): {CACHE_DIR}")
     print(f"📌 Target Output: {output_dir}")
     print("=" * 60)
 
@@ -82,7 +83,7 @@ def run_training(
             )
             use_unsloth = True
         except Exception as e:
-            print(f"⚠️ Chưa dùng Unsloth ({e}). Đang dùng Transformers + BitsAndBytes tiêu chuẩn...")
+            print(f"⚠️ Chưa khởi tạo được Unsloth ({e}). Chuyển sang Transformers + BitsAndBytes tiêu chuẩn...")
             use_unsloth = False
 
     if not use_unsloth:
