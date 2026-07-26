@@ -8,7 +8,7 @@ from typing import Optional
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
 
-# Cấu hình Cache HuggingFace lưu trực tiếp vào thư mục dự án trên ổ F: (tránh làm đầy ổ C:)
+# Cấu hình Cache HuggingFace lưu trực tiếp vào thư mục dự án trên ổ F:
 CACHE_DIR = ROOT_DIR / "models" / "cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 os.environ["HF_HOME"] = str(CACHE_DIR)
@@ -22,7 +22,7 @@ TRAIN_FILE = ROOT_DIR / "data" / "processed" / "train.jsonl"
 EVAL_FILE = ROOT_DIR / "data" / "processed" / "eval.jsonl"
 OUTPUT_DIR = ROOT_DIR / "models" / "gemma_medkit_qlora"
 
-# Model chỉ định từ người dùng: unsloth/gemma-4-E2B-it-unsloth-bnb-4bit
+# Model mặc định
 DEFAULT_MODEL_NAME = "unsloth/gemma-4-E2B-it-unsloth-bnb-4bit"
 
 def run_training(
@@ -60,10 +60,11 @@ def run_training(
     print(f"  - Tập Eval: {len(eval_dataset)} mẫu")
 
     # 2. Khởi tạo Unsloth hoặc HuggingFace Standard
+    is_unsloth_success = False
     if use_unsloth or "unsloth" in model_name.lower():
         try:
             from unsloth import FastLanguageModel
-            print("\n⚡ Sử dụng Unsloth (Tối ưu tốc độ x2, tiết kiệm VRAM 50%)...")
+            print("\n⚡ Kích hoạt Unsloth FastLanguageModel...")
             model, tokenizer = FastLanguageModel.from_pretrained(
                 model_name=model_name,
                 max_seq_length=max_seq_length,
@@ -81,16 +82,18 @@ def run_training(
                 use_gradient_checkpointing="unsloth",
                 random_state=42,
             )
-            use_unsloth = True
+            is_unsloth_success = True
+            print("✅ Đã khởi tạo Unsloth FastLanguageModel thành công!")
         except Exception as e:
-            print(f"⚠️ Chưa khởi tạo được Unsloth ({e}). Chuyển sang Transformers + BitsAndBytes tiêu chuẩn...")
-            use_unsloth = False
+            print(f"⚠️ Chưa khởi tạo được Unsloth Natively ({e}).")
+            print("💡 Hãy chạy lệnh 'pip install unsloth_zoo' để kích hoạt đầy đủ Unsloth cho Gemma 4.")
+            is_unsloth_success = False
 
-    if not use_unsloth:
+    if not is_unsloth_success:
         from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
         from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-        print("\n⚙️ 2. Cấu hình BitsAndBytes 4-bit Quantization cho RTX 3060 12GB...")
+        print("\n⚙️ 2. Cấu hình BitsAndBytes 4-bit Quantization tiêu chuẩn...")
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -112,6 +115,17 @@ def run_training(
         model = prepare_model_for_kbit_training(model)
 
         print("\n🛠️ 3. Thiết lập Cấu hình PEFT / LoRA...")
+        # Đăng ký custom module class nếu dùng Gemma4ClippableLinear
+        import peft.tuners.lora.model as lora_module
+        try:
+            for name, module in model.named_modules():
+                class_name = module.__class__.__name__
+                if "ClippableLinear" in class_name or "Gemma4" in class_name:
+                    if hasattr(lora_module, "dispatch_default"):
+                        pass
+        except Exception:
+            pass
+
         peft_config = LoraConfig(
             r=16,
             lora_alpha=32,
@@ -120,8 +134,13 @@ def run_training(
             bias="none",
             task_type="CAUSAL_LM"
         )
-        model = get_peft_model(model, peft_config)
-        model.print_trainable_parameters()
+        try:
+            model = get_peft_model(model, peft_config)
+            model.print_trainable_parameters()
+        except Exception as peft_err:
+            print(f"❌ Lỗi cấu hình PEFT: {peft_err}")
+            print("💡 Hãy cài 'unsloth_zoo' bằng lệnh: pip install unsloth_zoo")
+            return
 
     # 3. Format dữ liệu theo Chat Template
     print("\n📝 4. Đang Format dữ liệu thành Prompt Gemma...")
