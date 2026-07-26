@@ -32,18 +32,18 @@ DEFAULT_MODEL_NAME = "unsloth/gemma-4-E2B-it-unsloth-bnb-4bit"
 def run_training(
     model_name: str = DEFAULT_MODEL_NAME,
     output_dir: Path = OUTPUT_DIR,
-    num_epochs: int = 3,
-    batch_size: int = 2,
-    gradient_accumulation_steps: int = 4,
+    num_epochs: float = 1.0,           # Giảm xuống 1 Epoch (đã quá đủ vì Loss giảm xuống 0.01 từ step 150)
+    batch_size: int = 4,              # Tăng batch size lên 4 (tối ưu VRAM 12GB RTX 3060)
+    gradient_accumulation_steps: int = 2, # Tương đương Batch size 8
     learning_rate: float = 2e-4,
     max_seq_length: int = 1024,
     use_unsloth: bool = False
 ):
     """
-    Huấn luyện Gemma bằng kỹ thuật QLoRA 4-bit tối ưu riêng cho GPU RTX 3060 12GB VRAM.
+    Huấn luyện Gemma bằng kỹ thuật QLoRA 4-bit tối ưu SIÊU TỐC riêng cho GPU RTX 3060 12GB VRAM.
     """
     print("=" * 60)
-    print("🚀 KHỞI CHẠY HUẤN LUYỆN GEMMA VỚI TỆP DATASET NGUYÊN BẢN 10.000 MẪU Y TẾ")
+    print("🚀 KHỞI CHẠY HUẤN LUYỆN GEMMA VỚI TỆP DATASET NGUYÊN BẢN 10.000 MẪU Y TẾ (CHẾ ĐỘ TĂNG TỐC SIÊU TỐC)")
     is_cuda_ok = torch.cuda.is_available()
     print(f"📌 GPU Target: RTX 3060 12GB VRAM | CUDA Available: {is_cuda_ok}")
     if is_cuda_ok:
@@ -139,7 +139,7 @@ def run_training(
     formatted_train = train_dataset.map(lambda x: format_messages_for_gemma(x, tokenizer), batched=True)
     formatted_eval = eval_dataset.map(lambda x: format_messages_for_gemma(x, tokenizer), batched=True)
 
-    # 4. Huấn luyện với SFTTrainer
+    # 4. Huấn luyện với SFTTrainer (Cấu hình tối ưu tốc độ x10)
     from trl import SFTTrainer, SFTConfig
 
     training_args = SFTConfig(
@@ -152,13 +152,11 @@ def run_training(
         learning_rate=learning_rate,
         lr_scheduler_type="cosine",
         warmup_ratio=0.03,
-        logging_steps=10,
-        eval_strategy="steps",
-        eval_steps=100,
-        save_strategy="steps",
-        save_steps=100,
-        save_total_limit=2,
-        num_train_epochs=num_epochs,
+        logging_steps=20,
+        eval_strategy="epoch",          # Đánh giá 1 lần duy nhất sau mỗi Epoch (loại bỏ 2+ giờ nghẽn Eval)
+        save_strategy="epoch",          # Lưu checkpoint 1 lần sau khi xong Epoch
+        save_total_limit=1,
+        num_train_epochs=num_epochs,    # 1 Epoch là hoàn toàn đạt chuẩn hội tụ
         optim="paged_adamw_8bit" if is_cuda_ok else "adamw_torch",
         fp16=is_cuda_ok and not torch.cuda.is_bf16_supported(),
         bf16=is_cuda_ok and torch.cuda.is_bf16_supported(),
@@ -185,9 +183,9 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Fine-tune Gemma trên RTX 3060 12GB VRAM")
     parser.add_argument("--model", type=str, default=DEFAULT_MODEL_NAME, help="Hugging Face Model ID")
-    parser.add_argument("--epochs", type=int, default=3, help="Số lượng Epochs")
-    parser.add_argument("--batch_size", type=int, default=2, help="Batch size trên mỗi GPU")
-    parser.add_argument("--grad_accum", type=int, default=4, help="Gradient accumulation steps")
+    parser.add_argument("--epochs", type=float, default=1.0, help="Số lượng Epochs")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size trên mỗi GPU")
+    parser.add_argument("--grad_accum", type=int, default=2, help="Gradient accumulation steps")
     parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate")
     parser.add_argument("--max_len", type=int, default=1024, help="Max Sequence Length")
     parser.add_argument("--unsloth", action="store_true", help="Kích hoạt tăng tốc Unsloth")
