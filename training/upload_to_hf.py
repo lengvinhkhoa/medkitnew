@@ -63,9 +63,12 @@ def push_to_huggingface(
         print("💡 Lưu ý: Hãy đảm bảo Token được tạo ở dạng 'Write' (Quyền ghi) tại https://huggingface.co/settings/tokens")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Upload LoRA Adapter lên Hugging Face Hub")
+    parser = argparse.ArgumentParser(description="Upload LoRA Adapter hoặc Merged Model lên Hugging Face Hub")
     parser.add_argument("--repo_id", type=str, default="gemma-4-medkit-vietnamese", help="Tên Repo trên HF")
     parser.add_argument("--token", type=str, required=True, help="Hugging Face Write Token (hf_xxx...)")
+    parser.add_argument("--folder", "--adapter", "--adapter_path", dest="folder", type=str, default=str(MODEL_ADAPTER_PATH), help="Đường dẫn thư mục model cần upload")
 
     args = parser.parse_args()
-    push_to_huggingface(args.repo_id, args.token)
+    push_to_huggingface(args.repo_id, args.token, adapter_path=Path(args.folder))
+
+

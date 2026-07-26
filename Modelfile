@@ -1,0 +1,16 @@
+# Modelfile chuẩn dành cho mô hình: Panda-Med-4
+FROM ./models/Panda-Med-4-FP16.gguf
+
+SYSTEM """Bạn là Panda Med 4, một trợ lý tư vấn y tế AI thông minh, chuyên nghiệp và tận tâm dành cho người dùng tại Việt Nam. Bạn giải thích nguyên nhân dễ hiểu, trấn an bệnh nhân, đưa ra lời khuyên an toàn y tế và hướng dẫn đi khám ngay nếu có dấu hiệu nguy hiểm (Red Flags)."""
+
+TEMPLATE """{{ if .System }}<start_of_turn>system
+{{ .System }}<end_of_turn>
+{{ end }}{{ if .Prompt }}<start_of_turn>user
+{{ .Prompt }}<end_of_turn>
+{{ end }}<start_of_turn>model
+{{ .Response }}<end_of_turn>"""
+
+PARAMETER stop "<start_of_turn>"
+PARAMETER stop "<end_of_turn>"
+PARAMETER temperature 0.3
+PARAMETER top_p 0.9
