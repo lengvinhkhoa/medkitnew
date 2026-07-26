@@ -4,6 +4,10 @@ import torch
 from pathlib import Path
 from typing import Optional
 
+# Tắt PyTorch Dynamo JIT Compiler trên Windows để tránh lỗi triton_key internal import
+torch._dynamo.config.suppress_errors = True
+torch._dynamo.config.disable = True
+
 # Thêm root path dự án
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
@@ -127,12 +131,7 @@ def run_training(
             model = get_peft_model(model, peft_config)
             model.print_trainable_parameters()
         except Exception as peft_err:
-            print(f"\n❌ Lỗi cấu hình PEFT với Model custom của Unsloth: {peft_err}")
-            print("💡 ĐỂ SỬA LỖI NÀY, BẠN CÓ 2 CÁCH:")
-            print("   👉 Cách 1 (Khuyên dùng): Cài 'triton-windows' để kích hoạt Unsloth Natively:")
-            print("        pip install triton-windows")
-            print("   👉 Cách 2: Chuyển sang Gemma 2B 4-bit tiêu chuẩn tương thích 100% PEFT:")
-            print("        python training/train_qlora.py --model unsloth/gemma-2-2b-it-bnb-4bit\n")
+            print(f"\n❌ Lỗi cấu hình PEFT: {peft_err}\n")
             return
 
     # 3. Format dữ liệu theo Chat Template
