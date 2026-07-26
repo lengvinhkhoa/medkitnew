@@ -6,3 +6,5 @@ tenacity>=8.2.0
 tqdm>=4.66.0
 rich>=13.7.0
 pytest>=8.0.0
+huggingface_hub>=0.23.0
+
