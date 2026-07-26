@@ -10,7 +10,7 @@ sys.path.append(str(ROOT_DIR))
 from config.settings import DEFAULT_SYSTEM_PROMPT
 
 MODEL_ADAPTER_PATH = ROOT_DIR / "models" / "gemma_medkit_qlora"
-DEFAULT_MODEL_NAME = "unsloth/gemma-2-2b-it-bnb-4bit"
+DEFAULT_MODEL_NAME = "unsloth/gemma-4-E2B-it-unsloth-bnb-4bit"
 
 def load_medkit_gemma(
     base_model_name: str = DEFAULT_MODEL_NAME,
@@ -18,7 +18,7 @@ def load_medkit_gemma(
 ):
     """Tải Base Model Gemma + LoRA Adapter đã huấn luyện trên RTX 3060."""
     print("=" * 60)
-    print("🤖 NẠP MODEL NGUYÊN BẢN GEMMA FINE-TUNED MEDKIT")
+    print("🤖 NẠP MODEL TRỢ LÝ Y TẾ AI NGUYÊN BẢN GEMMA FINE-TUNED MEDKIT")
     print(f"📌 Base Model: {base_model_name}")
     print(f"📌 LoRA Adapter: {adapter_path}")
     print("=" * 60)
@@ -65,12 +65,17 @@ def chat_interactive(base_model_name: str = DEFAULT_MODEL_NAME):
                 print("👋 Bác sĩ AI chào tạm biệt bạn!")
                 break
 
+            # Ghép System Prompt vào User message chuẩn Gemma Chat Template
+            user_content = f"{DEFAULT_SYSTEM_PROMPT}\n\nCâu hỏi: {user_input}"
             messages = [
-                {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
-                {"role": "user", "content": user_input}
+                {"role": "user", "content": user_content}
             ]
 
-            prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            try:
+                prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            except Exception:
+                prompt = f"<start_of_turn>user\n{user_content}<end_of_turn>\n<start_of_turn>model\n"
+
             inputs = tokenizer(prompt, return_tensors="pt").to("cuda" if torch.cuda.is_available() else "cpu")
 
             print("\n👨‍⚕️ Trợ lý Y tế AI: ", end="", flush=True)
