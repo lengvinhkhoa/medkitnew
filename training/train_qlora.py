@@ -8,6 +8,12 @@ from typing import Optional
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
 
+# Cấu hình Cache HuggingFace lưu trực tiếp vào thư mục dự án (tránh làm đầy ổ C:)
+CACHE_DIR = ROOT_DIR / "models" / "cache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+os.environ["HF_HOME"] = str(CACHE_DIR)
+os.environ["TRANSFORMERS_CACHE"] = str(CACHE_DIR)
+
 from training.dataset_loader import load_jsonl_dataset, format_messages_for_gemma
 
 # Đường dẫn dữ liệu
@@ -15,7 +21,7 @@ TRAIN_FILE = ROOT_DIR / "data" / "processed" / "train.jsonl"
 EVAL_FILE = ROOT_DIR / "data" / "processed" / "eval.jsonl"
 OUTPUT_DIR = ROOT_DIR / "models" / "gemma_medkit_qlora"
 
-# Default Model ID (Dùng unsloth/gemma-2-2b-it-bnb-4bit để tránh lỗi 401 GatedRepo)
+# Model 2B Siêu nhẹ (~1.5GB) tối ưu cho RTX 3060 và không tốn đĩa
 DEFAULT_MODEL_NAME = "unsloth/gemma-2-2b-it-bnb-4bit"
 
 def run_training(
@@ -29,7 +35,7 @@ def run_training(
     use_unsloth: bool = False
 ):
     """
-    Huấn luyện Gemma bằng kỹ thuật QLoRA 4-bit tối ưu riêng cho GPU RTX 3060 12GB VRAM.
+    Huấn luyện Gemma 2B bằng kỹ thuật QLoRA 4-bit tối ưu riêng cho GPU RTX 3060 12GB VRAM.
     """
     print("=" * 60)
     print("🚀 KHỞI CHẠY HUẤN LUYỆN GEMMA VỚI TỆP DATASET NGUYÊN BẢN 10.000 MẪU Y TẾ")
@@ -38,10 +44,10 @@ def run_training(
     if is_cuda_ok:
         print(f"📌 Card GPU: {torch.cuda.get_device_name(0)} ({torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB VRAM)")
     else:
-        print("⚠️ CẢNH BÁO: PyTorch hiện tại KHÔNG nhận diện được GPU CUDA (CUDA Available = False)!")
-        print("💡 Hãy cài lại PyTorch CUDA bằng lệnh: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121")
+        print("⚠️ CẢNH BÁO: PyTorch hiện tại KHÔNG nhận diện được GPU CUDA!")
     
     print(f"📌 Base Model: {model_name}")
+    print(f"📌 Cache Directory: {CACHE_DIR}")
     print(f"📌 Target Output: {output_dir}")
     print("=" * 60)
 
@@ -61,7 +67,8 @@ def run_training(
                 model_name=model_name,
                 max_seq_length=max_seq_length,
                 load_in_4bit=True,
-                dtype=None,  # Tự động chọn Float16/Bfloat16 theo RTX 3060
+                dtype=None,
+                cache_dir=str(CACHE_DIR)
             )
             model = FastLanguageModel.get_peft_model(
                 model,
@@ -74,8 +81,8 @@ def run_training(
                 random_state=42,
             )
             use_unsloth = True
-        except ImportError:
-            print("⚠️ Chưa cài thư viện unsloth. Đang dùng Transformers + BitsAndBytes tiêu chuẩn...")
+        except Exception as e:
+            print(f"⚠️ Chưa dùng Unsloth ({e}). Đang dùng Transformers + BitsAndBytes tiêu chuẩn...")
             use_unsloth = False
 
     if not use_unsloth:
@@ -90,7 +97,7 @@ def run_training(
             bnb_4bit_use_double_quant=True
         )
 
-        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=str(CACHE_DIR), trust_remote_code=True)
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
@@ -98,6 +105,7 @@ def run_training(
             model_name,
             quantization_config=bnb_config,
             device_map="auto" if is_cuda_ok else "cpu",
+            cache_dir=str(CACHE_DIR),
             trust_remote_code=True
         )
         model = prepare_model_for_kbit_training(model)
