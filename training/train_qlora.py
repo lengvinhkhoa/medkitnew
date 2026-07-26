@@ -85,8 +85,7 @@ def run_training(
             is_unsloth_success = True
             print("✅ Đã khởi tạo Unsloth FastLanguageModel thành công!")
         except Exception as e:
-            print(f"⚠️ Chưa khởi tạo được Unsloth Natively ({e}).")
-            print("💡 Hãy chạy lệnh 'pip install unsloth_zoo' để kích hoạt đầy đủ Unsloth cho Gemma 4.")
+            print(f"⚠️ Dùng Transformers + BitsAndBytes tiêu chuẩn ({e})...")
             is_unsloth_success = False
 
     if not is_unsloth_success:
@@ -112,20 +111,20 @@ def run_training(
             cache_dir=str(CACHE_DIR),
             trust_remote_code=True
         )
+
+        # Mở bọc tự động Gemma4ClippableLinear -> Linear4bit để tương thích PEFT
+        for name, module in list(model.named_modules()):
+            if hasattr(module, "linear") and "ClippableLinear" in module.__class__.__name__:
+                if "." in name:
+                    parent_name, attr_name = name.rsplit(".", 1)
+                    parent = dict(model.named_modules())[parent_name]
+                    setattr(parent, attr_name, module.linear)
+                else:
+                    setattr(model, name, module.linear)
+
         model = prepare_model_for_kbit_training(model)
 
         print("\n🛠️ 3. Thiết lập Cấu hình PEFT / LoRA...")
-        # Đăng ký custom module class nếu dùng Gemma4ClippableLinear
-        import peft.tuners.lora.model as lora_module
-        try:
-            for name, module in model.named_modules():
-                class_name = module.__class__.__name__
-                if "ClippableLinear" in class_name or "Gemma4" in class_name:
-                    if hasattr(lora_module, "dispatch_default"):
-                        pass
-        except Exception:
-            pass
-
         peft_config = LoraConfig(
             r=16,
             lora_alpha=32,
@@ -134,13 +133,8 @@ def run_training(
             bias="none",
             task_type="CAUSAL_LM"
         )
-        try:
-            model = get_peft_model(model, peft_config)
-            model.print_trainable_parameters()
-        except Exception as peft_err:
-            print(f"❌ Lỗi cấu hình PEFT: {peft_err}")
-            print("💡 Hãy cài 'unsloth_zoo' bằng lệnh: pip install unsloth_zoo")
-            return
+        model = get_peft_model(model, peft_config)
+        model.print_trainable_parameters()
 
     # 3. Format dữ liệu theo Chat Template
     print("\n📝 4. Đang Format dữ liệu thành Prompt Gemma...")
